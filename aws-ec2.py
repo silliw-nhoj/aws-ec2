@@ -36,11 +36,21 @@ import sys, os
 import optparse
 import subprocess
 import json
+import time
 
 ec2reservations = {}
 ec2regions = {}
 instances = {}
 regions = {}
+
+class colors:
+    header = '\033[95m'
+    blue = '\033[94m'
+    green = '\033[92m'
+    yellow = '\033[93m'
+    red = '\033[91m'
+    default = '\033[0m'
+
 
 # -------------------------------------------------------------------------------------------------------------------------
 # Functions
@@ -97,7 +107,7 @@ def get_regions():
 def show_instances():
     for regionIndex in range(len(ec2regions["Regions"])):
         region = ec2regions["Regions"][regionIndex]["RegionName"]
-        print '\n############################\n# Region:',region,'\n############################',
+        print '\n' + colors.blue + '############################\n# Region:',region,'\n############################' + colors.default,
         for instance in range(len(ec2reservations[regionIndex]["Reservations"])):
             instId = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["InstanceId"]
             state = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["State"]["Name"]
@@ -145,13 +155,15 @@ def show_instances():
                     instances[instId]['interfaces'][intId]['privIPs'][privIP]['primaryIP'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Primary"]
             
             if state == "stopped":
-                color = '\033[91m'
+                color = colors.red
             elif state == "running":
-                color = '\033[92m'
+                color = colors.green
             else:
-                color = '\033[0m'
+                color = colors.yellow
 
-            print '\n  Name:',instName,'- Instance ID:',instId,'- State:', color + state + '\033[0m','\n    Primary Priv IP:',instPrivIP,'- Primary Public IP:',instPubIP
+            print '\n  Name:', colors.blue + instName + colors.default ,'- Instance ID:',instId,'- State:', color + state + colors.default
+            print '    KeyName:',ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"]
+            print '    Primary Priv IP:',instPrivIP,'- Primary Public IP:',instPubIP
             for intId in instances[instId]['interfaces'].keys():
                 print '\tInterface:',instances[instId]['interfaces'][intId]['desc'],'- ID:',instances[instId]['interfaces'][intId]['intId'],'- MAC:',instances[instId]['interfaces'][intId]['macAddr']
                 print '\t  IP Addresses:'
@@ -228,6 +240,7 @@ get_instances()
 show_instances()
 if (options.action == 'stop' or options.action == 'start'):
     stop_start_instance()
+    time.sleep(5)
     get_instances()
     show_instances()
 elif (options.action == 'pub'):

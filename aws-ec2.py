@@ -68,9 +68,12 @@ def command_args():
     )
     parser.add_option('--instance-ids',
         dest="instanceIds",
+        default="",
     )
     parser.add_option('--priv-ips',
         dest="privIps",
+        default="",
+        type="string"
     )
     global options
     options, remainder = parser.parse_args()
@@ -91,7 +94,7 @@ def get_instances():
 
     for regionIndex in  range(len(ec2regions["Regions"])):
         region = ec2regions["Regions"][regionIndex]["RegionName"]
-        output = subprocess.Popen('aws ec2 describe-instances --region ' +region, stdout=subprocess.PIPE, shell=True)
+        output = subprocess.Popen('aws ec2 describe-instances --instance-ids ' + options.instanceIds + ' --region ' + region, stdout=subprocess.PIPE, shell=True)
         (ec2JSON, err) = output.communicate()
         #global ec2reservations
         ec2reservations[regionIndex] = json.loads(ec2JSON)
@@ -161,14 +164,15 @@ def show_instances():
             else:
                 color = colors.yellow
 
-            print '\n  Name:', colors.blue + instName + colors.default ,'- Instance ID:',instId,'- State:', color + state + colors.default
-            print '    KeyName:',ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"]
-            print '    Primary Priv IP:',instPrivIP,'- Primary Public IP:',instPubIP
+            print '\n  Name:', colors.blue + instName + colors.default ,', Instance ID:',instId, \
+                  ', State:', color + state + colors.default
+            print '    KeyName:',ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"],', Launch Time:', ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["LaunchTime"]
+            print '    Primary Priv IP:',instPrivIP,', Primary Public IP:',instPubIP
             for intId in instances[instId]['interfaces'].keys():
-                print '\tInterface:',instances[instId]['interfaces'][intId]['desc'],'- ID:',instances[instId]['interfaces'][intId]['intId'],'- MAC:',instances[instId]['interfaces'][intId]['macAddr']
+                print '\tInterface:',instances[instId]['interfaces'][intId]['desc'],', ID:',instances[instId]['interfaces'][intId]['intId'],', MAC:',instances[instId]['interfaces'][intId]['macAddr']
                 print '\t  IP Addresses:'
                 for privIP in instances[instId]['interfaces'][intId]['privIPs'].keys():
-                    print '\t  Primary:',instances[instId]['interfaces'][intId]['privIPs'][privIP]['primaryIP'],'- Private IP:',privIP,'- Public IP:',instances[instId]['interfaces'][intId]['privIPs'][privIP]['pubIp']
+                    print '\t  Primary:',instances[instId]['interfaces'][intId]['privIPs'][privIP]['primaryIP'],', Private IP:',privIP,', Public IP:',instances[instId]['interfaces'][intId]['privIPs'][privIP]['pubIp']
     
     return;
 
@@ -193,8 +197,11 @@ def get_pub_addr():
     FNULL = open(os.devnull, 'w')
     output = subprocess.Popen('aws ec2 describe-network-interfaces', stdout=subprocess.PIPE, shell=True)
     (netIntInfo, err) = output.communicate()
-    netInts = json.loads(netIntInfo)    
-    for priIP in command_args.priIPs:
+    netInts = json.loads(netIntInfo) 
+    privIps = options.privIps
+    privIps = privIps.split(' ')   
+    for i in range(len(privIps)):
+        priIP = privIps[i]
         output = subprocess.Popen('aws ec2 allocate-address', stdout=subprocess.PIPE, shell=True)
         (allocatedAddrInfo, err) = output.communicate()
         allocAddr = json.loads(allocatedAddrInfo)
@@ -212,9 +219,11 @@ def get_pub_addr():
     return;
     
 def del_pub_addr():
-    print '\nAction:',command_args.action,'- private IP(s):',' '.join(command_args.priIPs),'\n'
     FNULL = open(os.devnull, 'w')
-    for priIP in command_args.priIPs:
+    privIps = options.privIps
+    privIps = privIps.split(' ')
+    for i in range(len(privIps)):
+        priIP = privIps[i]
         output = subprocess.Popen('aws ec2 describe-addresses --filters \"Name=private-ip-address,Values=' + priIP + '\"', stdout=subprocess.PIPE, shell=True)
         (elaIPInfo, err) = output.communicate()
         elaIPs = json.loads(elaIPInfo)

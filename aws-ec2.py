@@ -11,21 +11,23 @@
 # 
 # Usage: ./aws-ec2.py <action|> <instanceIds|privateIPs|>
 # 	actions: 
+#       list - list all instances in all regions, all instances in a region by specifying region, or
+#              instance(s) in a region by specifying region and instance(s). See examples
 # 		start|stop - start or stop ec2 instance(s)
-# 		pub|nopub - get or release public IP(s) for private IP(s)
-# 	instance Ids: List ec2 instance Ids to stop or start. If more than one, coma separated with no spaces
-# 	Private IPs: List private IPs to get or release public IPs for. If more than one, coma separated with no spaces
+# 		pub|nopub - get or release public IP(s) for specified private IP(s)
 # 	
 # 1. LIst EC2 instances
-# 	Example: ./aws-ec2.py
+# 	Example: ./aws-ec2.py --action list
+#            ./aws-ec2.py -a list --region us-west-1
+#            ./aws-ec2.py -a list -r us-west-1 --instance-ids "i-ca12d212 i-5c0ece84"
 # 	
 # 2. Start|stop EC2 instances
-# 	Example:	./aws-ec2.py start i-ca12d212,i-5c0ece84
-# 				./aws-ec2.py stop i-ca12d212,i-5c0ece84
+# 	Example:	./aws-ec2.py -a start -r us-west-1 --instance-ids "i-ca12d212 i-5c0ece84"
+# 				./aws-ec2.py -a stop -r us-west-1 --instance-ids "i-ca12d212 i-5c0ece84"
 # 
 # 3. get|release elastic IP(s) for private IP(s)
-# 	Example:	./aws-ec2.py pub 172.31.34.25,172.31.34.100,172.31.34.123
-# 				./aws-ec2.py nopub 172.31.34.25,172.31.34.100,172.31.34.123
+# 	Example:	./aws-ec2.py -a pub -r us-west-1 --priv-ips "10.0.1.226 10.0.101.21" --instance-ids "i-ca12d212 i-5c0ece84"
+# 				./aws-ec2.py -a nopub -r us-west-1 --priv-ips "10.0.1.226 10.0.101.21" --instance-ids "i-ca12d212 i-5c0ece84"
 #
 
 # -------------------------------------------------------------------------------------------------------------------------
@@ -94,18 +96,73 @@ def get_instances():
 
     for regionIndex in  range(len(ec2regions["Regions"])):
         region = ec2regions["Regions"][regionIndex]["RegionName"]
-        output = subprocess.Popen('aws ec2 describe-instances --instance-ids ' + options.instanceIds + ' --region ' + region, stdout=subprocess.PIPE, shell=True)
+        output = subprocess.Popen('aws ec2 describe-instances --instance-ids ' + options.instanceIds + ' --region ' + region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         (ec2JSON, err) = output.communicate()
         #global ec2reservations
-        ec2reservations[regionIndex] = json.loads(ec2JSON)
+        if (err != ""):
+            print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+            sys.exit(0)
+        else:
+            ec2reservations[regionIndex] = json.loads(ec2JSON)
+            for instance in range(len(ec2reservations[regionIndex]["Reservations"])):
+                instId = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["InstanceId"]
+                
+                instances[instId] = {}
+                instances[instId]['interfaces'] = {}
+                instances[instId]['Region'] = region
+                
+                instances[instId]['state'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["State"]["Name"]
 
+                if 'PrivateIpAddress' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]:
+                    instances[instId]["instPrivIP"] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["PrivateIpAddress"]
+                else:
+                    instances[instId]["instPrivIP"] = 'None'
+
+                if 'PublicIpAddress' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]:
+                    instances[instId]["instPubIP"] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["PublicIpAddress"]
+                else:
+                    instances[instId]["instPubIP"] = 'None'
+                
+
+                if 'Tags' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]:
+                    for tag in range(len(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["Tags"])):
+                        if 'Name' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["Tags"][tag]["Key"]:
+                            instances[instId]["instName"] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["Tags"][tag]["Value"]
+                else:
+                    instances[instId]["instName"] = 'None'
+
+                if not instances[instId]["instName"]:
+                    instances[instId]["instName"] = 'None'
+                
+                for netInt in range(len(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"])):
+                    intId = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["NetworkInterfaceId"]
+                    instances[instId]['interfaces'][intId] = {}
+                    instances[instId]['interfaces'][intId]['privIPs'] = {}
+                    instances[instId]['interfaces'][intId]['intId'] = intId
+                    instances[instId]['interfaces'][intId]['macAddr'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["MacAddress"]
+                    instances[instId]['interfaces'][intId]['desc'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["Description"]
+                    instances[instId]['interfaces'][intId]['index'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["Attachment"]["DeviceIndex"]
+                    for intPrivIP in range(len(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"])):
+                        privIP = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["PrivateIpAddress"]
+                        instances[instId]['interfaces'][intId]['privIPs'][privIP] = {}
+                        instances[instId]['interfaces'][intId]['privIPs'][privIP]['privIP'] = privIP
+                        instances[instId]['interfaces'][intId]['privIPs'][privIP]['pubIp'] = 'None'
+                        if 'Association' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]:
+                            if 'PublicIp' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Association"]:
+                                instances[instId]['interfaces'][intId]['privIPs'][privIP]['pubIp'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Association"]["PublicIp"]
+                            
+                        instances[instId]['interfaces'][intId]['privIPs'][privIP]['primaryIP'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Primary"]
 
 def get_regions():
-    output = subprocess.Popen('aws ec2 describe-regions --region-names ' +options.region, stdout=subprocess.PIPE, shell=True)
+    output = subprocess.Popen('aws ec2 describe-regions --region-names ' +options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     (ec2JSON, err) = output.communicate()
     global ec2regions
-    ec2regions = json.loads(ec2JSON)
-    return;
+    if (err != ""):
+        print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+        sys.exit(0)
+    else:
+        ec2regions = json.loads(ec2JSON)
+        return;
     
 def show_instances():
     for regionIndex in range(len(ec2regions["Regions"])):
@@ -113,61 +170,18 @@ def show_instances():
         print '\n' + colors.blue + '############################\n# Region:',region,'\n############################' + colors.default,
         for instance in range(len(ec2reservations[regionIndex]["Reservations"])):
             instId = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["InstanceId"]
-            state = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["State"]["Name"]
-            if 'PrivateIpAddress' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]:
-                instPrivIP = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["PrivateIpAddress"]
-            else:
-                instPrivIP = 'None'
-            instances[instId] = {}
-            instances[instId]['interfaces'] = {}
-            instances[instId]['Region'] = region
-            
-            if 'PublicIpAddress' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]:
-                instPubIP = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["PublicIpAddress"]
-            else:
-                instPubIP = 'None'
-            
 
-            if 'Tags' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]:
-                for tag in range(len(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["Tags"])):
-                    if 'Name' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["Tags"][tag]["Key"]:
-                        instName = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["Tags"][tag]["Value"]
-            else:
-                instName = 'None'
-
-            if not instName:
-                instName = 'None'
-            
-            for netInt in range(len(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"])):
-                intId = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["NetworkInterfaceId"]
-                instances[instId]['interfaces'][intId] = {}
-                instances[instId]['interfaces'][intId]['privIPs'] = {}
-                instances[instId]['interfaces'][intId]['intId'] = intId
-                instances[instId]['interfaces'][intId]['macAddr'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["MacAddress"]
-                instances[instId]['interfaces'][intId]['desc'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["Description"]
-                instances[instId]['interfaces'][intId]['index'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["Attachment"]["DeviceIndex"]
-                for intPrivIP in range(len(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"])):
-                    privIP = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["PrivateIpAddress"]
-                    instances[instId]['interfaces'][intId]['privIPs'][privIP] = {}
-                    instances[instId]['interfaces'][intId]['privIPs'][privIP]['privIP'] = privIP
-                    instances[instId]['interfaces'][intId]['privIPs'][privIP]['pubIp'] = 'None'
-                    if 'Association' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]:
-                        if 'PublicIp' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Association"]:
-                            instances[instId]['interfaces'][intId]['privIPs'][privIP]['pubIp'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Association"]["PublicIp"]
-                        
-                    instances[instId]['interfaces'][intId]['privIPs'][privIP]['primaryIP'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Primary"]
-            
-            if state == "stopped":
+            if instances[instId]["state"] == "stopped":
                 color = colors.red
-            elif state == "running":
+            elif instances[instId]["state"] == "running":
                 color = colors.green
             else:
                 color = colors.yellow
 
-            print '\n  Name:', colors.blue + instName + colors.default ,', Instance ID:',instId, \
-                  ', State:', color + state + colors.default
+            print '\n  Name:', colors.blue + instances[instId]["instName"] + colors.default ,', Instance ID:',instId, \
+                  ', State:', color + instances[instId]["state"] + colors.default
             print '    KeyName:',ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"],', Launch Time:', ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["LaunchTime"]
-            print '    Primary Priv IP:',instPrivIP,', Primary Public IP:',instPubIP
+            print '    Primary Priv IP:',instances[instId]["instPrivIP"],', Primary Public IP:',instances[instId]["instPubIP"]
             for intId in instances[instId]['interfaces'].keys():
                 print '\tInterface:',instances[instId]['interfaces'][intId]['desc'],', ID:',instances[instId]['interfaces'][intId]['intId'],', MAC:',instances[instId]['interfaces'][intId]['macAddr']
                 print '\t  IP Addresses:'
@@ -177,63 +191,76 @@ def show_instances():
     return;
 
 def stop_start_instance():
-    FNULL = open(os.devnull, 'w')
-    subprocess.call('aws ec2 ' + options.action + '-instances --instance-ids ' + options.instanceIds + ' --region ' + options.region, stdout=FNULL, shell=True)
-    # if options.action == 'stop':
-    #     allocId = assocId = ''
-    #     for instId in options.instanceIds:
-    #         output = subprocess.Popen('aws ec2 describe-addresses --filters \"Name=instance-id,Values=' + instId +'\"', stdout=subprocess.PIPE, shell=True)
-    #         (elaIPInfo, err) = output.communicate()
-    #         elaIPs = json.loads(elaIPInfo)
-    #         if elaIPs['Addresses']:
-    #             for elaIP in range(len(elaIPs['Addresses'])):
-    #                 if 'PublicIp' in elaIPs['Addresses'][elaIP]:
-    #                     print '* Releasing elastic IP',elaIPs['Addresses'][elaIP]['PublicIp'],'from private IP',elaIPs['Addresses'][elaIP]['PrivateIpAddress']
-    #                     subprocess.call('aws ec2 disassociate-address --association-id ' + elaIPs['Addresses'][elaIP]['AssociationId'], stdout=FNULL, shell=True)
-    #                     subprocess.call('aws ec2 release-address --allocation-id ' + elaIPs['Addresses'][elaIP]['AllocationId'], stdout=FNULL, shell=True)
-    return;
+    output = subprocess.Popen('aws ec2 ' + options.action + '-instances --instance-ids ' + options.instanceIds + ' --region ' + options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    (ec2JSON, err) = output.communicate()
+    if (err != ""):
+        print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+        sys.exit(0)
+    else:
+        return;
 
 def get_pub_addr():
-    FNULL = open(os.devnull, 'w')
-    output = subprocess.Popen('aws ec2 describe-network-interfaces', stdout=subprocess.PIPE, shell=True)
+    output = subprocess.Popen('aws ec2 describe-network-interfaces --region ' + options.region , stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     (netIntInfo, err) = output.communicate()
-    netInts = json.loads(netIntInfo) 
-    privIps = options.privIps
-    privIps = privIps.split(' ')   
-    for i in range(len(privIps)):
-        priIP = privIps[i]
-        output = subprocess.Popen('aws ec2 allocate-address', stdout=subprocess.PIPE, shell=True)
-        (allocatedAddrInfo, err) = output.communicate()
-        allocAddr = json.loads(allocatedAddrInfo)
-        #allocAddr['AllocationId']
+    if (err != ""):
+        print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+        sys.exit(0)
+    else:
+        netInts = json.loads(netIntInfo) 
+        privIps = options.privIps
+        privIps = privIps.split(' ')   
+        for i in range(len(privIps)):
+            priIP = privIps[i]
+            output = subprocess.Popen('aws ec2 allocate-address --region ' + options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            (allocatedAddrInfo, err) = output.communicate()
+            if (err != ""):
+                print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+                sys.exit(0)
+            else:
+                allocAddr = json.loads(allocatedAddrInfo)
+                if 'NetworkInterfaces' in netInts:
+                    for netInt in range(len(netInts['NetworkInterfaces'])):
+                        for IPIdx in range(len(netInts['NetworkInterfaces'][netInt]['PrivateIpAddresses'])):
+                            if priIP in netInts['NetworkInterfaces'][netInt]['PrivateIpAddresses'][IPIdx]['PrivateIpAddress']:
+                                allocId = allocAddr['AllocationId']
+                                pubIp = allocAddr['PublicIp']
+                                netIntId = netInts['NetworkInterfaces'][netInt]['NetworkInterfaceId']
+                                print '* assigning public IP address', pubIp, 'to network interface', netIntId, 'private IP', priIP
+                                output = subprocess.Popen('aws ec2 associate-address --allocation-id ' + allocId + ' --network-interface-id ' + netIntId + ' --private-ip-address ' + priIP + ' --region ' + options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+                                (assocAddrInfo, err) = output.communicate()
+                                if (err != ""):
+                                    print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+                                    sys.exit(0)
 
-        if 'NetworkInterfaces' in netInts:
-            for netInt in range(len(netInts['NetworkInterfaces'])):
-                for IPIdx in range(len(netInts['NetworkInterfaces'][netInt]['PrivateIpAddresses'])):
-                    if priIP in netInts['NetworkInterfaces'][netInt]['PrivateIpAddresses'][IPIdx]['PrivateIpAddress']:
-                        allocId = allocAddr['AllocationId']
-                        pubIp = allocAddr['PublicIp']
-                        netIntId = netInts['NetworkInterfaces'][netInt]['NetworkInterfaceId']
-                        print '* assigning public IP address', pubIp, 'to network interface', netIntId, 'private IP', priIP
-                        subprocess.call('aws ec2 associate-address --allocation-id ' + allocId + ' --network-interface-id ' + netIntId + ' --private-ip-address ' + priIP, stdout=FNULL, shell=True)
-    return;
+        return;
     
 def del_pub_addr():
-    FNULL = open(os.devnull, 'w')
     privIps = options.privIps
     privIps = privIps.split(' ')
     for i in range(len(privIps)):
         priIP = privIps[i]
-        output = subprocess.Popen('aws ec2 describe-addresses --filters \"Name=private-ip-address,Values=' + priIP + '\"', stdout=subprocess.PIPE, shell=True)
+        output = subprocess.Popen('aws ec2 describe-addresses --filters \"Name=private-ip-address,Values=' + priIP + '\" --region ' + options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         (elaIPInfo, err) = output.communicate()
-        elaIPs = json.loads(elaIPInfo)
-        for i in range(len(elaIPs['Addresses'])):
-            pubIP = elaIPs['Addresses'][i]['PublicIp']
-            assocId = elaIPs['Addresses'][i]['AssociationId']
-            allocId = elaIPs['Addresses'][i]['AllocationId']
-            print '* Releasing elastic IP', pubIP, 'from private IP', priIP
-            subprocess.call('aws ec2 disassociate-address --association-id ' + assocId, stdout=FNULL, shell=True)
-            subprocess.call('aws ec2 release-address --allocation-id ' + allocId, stdout=FNULL, shell=True)
+        if (err != ""):
+            print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+            sys.exit(0)
+        else:
+            elaIPs = json.loads(elaIPInfo)
+            for i in range(len(elaIPs['Addresses'])):
+                pubIP = elaIPs['Addresses'][i]['PublicIp']
+                assocId = elaIPs['Addresses'][i]['AssociationId']
+                allocId = elaIPs['Addresses'][i]['AllocationId']
+                print '* Releasing elastic IP', pubIP, 'from private IP', priIP
+                output = subprocess.Popen('aws ec2 disassociate-address --association-id ' + assocId + ' --region ' + options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+                (result, err) = output.communicate()
+                if (err != ""):
+                    print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+                    sys.exit(0)
+                output = subprocess.Popen('aws ec2 release-address --allocation-id ' + allocId + ' --region ' + options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+                (result, err) = output.communicate()
+                if (err != ""):
+                    print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+                    sys.exit(0)
     return;
     
 # -------------------------------------------------------------------------------------------------------------------------

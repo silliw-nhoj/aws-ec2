@@ -2,33 +2,6 @@
 # aws-ec2.py
 # j.willis@f5.com - 6-2-2016
 #
-# Objective: Interact with AWS CLI to list, stop, and start ec2 instances and get and release public IP addresses
-# for specified private IP addresses
-#
-# Requirements: 
-# 1. python v 2.6 or later for subprocess and json
-# 2. AWS cli installed and configured on local host
-# 
-# Usage: ./aws-ec2.py <action|> <instanceIds|privateIPs|>
-# 	actions: 
-#       list - list all instances in all regions, all instances in a region by specifying region, or
-#              instance(s) in a region by specifying region and instance(s). See examples
-# 		start|stop - start or stop ec2 instance(s)
-# 		pub|nopub - get or release public IP(s) for specified private IP(s)
-# 	
-# 1. LIst EC2 instances
-# 	Example: ./aws-ec2.py --action list
-#            ./aws-ec2.py -a list --region us-west-1
-#            ./aws-ec2.py -a list -r us-west-1 --instance-ids "i-ca12d212 i-5c0ece84"
-# 	
-# 2. Start|stop EC2 instances
-# 	Example:	./aws-ec2.py -a start -r us-west-1 --instance-ids "i-ca12d212 i-5c0ece84"
-# 				./aws-ec2.py -a stop -r us-west-1 --instance-ids "i-ca12d212 i-5c0ece84"
-# 
-# 3. get|release elastic IP(s) for private IP(s)
-# 	Example:	./aws-ec2.py -a pub -r us-west-1 --priv-ips "10.0.1.226 10.0.101.21" --instance-ids "i-ca12d212 i-5c0ece84"
-# 				./aws-ec2.py -a nopub -r us-west-1 --priv-ips "10.0.1.226 10.0.101.21" --instance-ids "i-ca12d212 i-5c0ece84"
-#
 
 # -------------------------------------------------------------------------------------------------------------------------
 # Imports
@@ -45,6 +18,31 @@ ec2regions = {}
 instances = {}
 regions = {}
 
+usage = "\n\
+Objective: Interact with AWS CLI to list, stop, and start ec2 instances and get and release public IP addresses\n\
+for specified private IP addresses\n\n\
+Requirements:\n\
+  1. python v 2.6 or later for subprocess and json\n\
+  2. AWS cli installed and configured on local host\n\n\
+Usage: ./%prog [options]\n\
+ACTIONS:\n\
+  list - list all instances in all regions, all instances in a region by specifying region, or\n\
+         instance(s) in a region by specifying region and instance(s). See examples\n\
+  running - same as list but only for running instances\n\
+  start|stop - start or stop ec2 instance(s)\n\
+  pub|nopub - get or release public IP(s) for specified private IP(s)\n\n\
+EXAMPLES:\n\
+1. LIst EC2 instances\n\
+  Example: ./%prog --action list\n\
+           ./%prog -a list --region us-west-1\n\
+           ./%prog -a list -r us-west-1 --instance-ids \"i-ca12d212 i-5c0ece84\"\n\
+2. Start|stop EC2 instances\n\
+  Example:  ./%prog -a start -r us-west-1 --instance-ids \"i-ca12d212 i-5c0ece84\"\n\
+            ./%prog -a stop -r us-west-1 --instance-ids \"i-ca12d212 i-5c0ece84\"\n\
+3. Get|release elastic IP(s) for private IP(s)\n\
+  Example:  ./%prog -a pub -r us-west-1 --priv-ips \"10.0.1.226 10.0.101.21\" --instance-ids \"i-ca12d212 i-5c0ece84\"\n\
+            ./%prog -a nopub -r us-west-1 --priv-ips \"10.0.1.226 10.0.101.21\" --instance-ids \"i-ca12d212 i-5c0ece84\""
+
 class colors:
     header = '\033[95m'
     blue = '\033[94m'
@@ -53,16 +51,16 @@ class colors:
     red = '\033[91m'
     default = '\033[0m'
 
-
 # -------------------------------------------------------------------------------------------------------------------------
 # Functions
 # -------------------------------------------------------------------------------------------------------------------------
 
 def command_args():
-    parser = optparse.OptionParser()
+    parser = optparse.OptionParser(usage=usage)
     parser.add_option('-a', '--action', 
         dest="action", 
         default="list",
+        choices=['list','running','start','stop','pub','nopub']
     )
     parser.add_option('-r', '--region',
         dest="region",
@@ -84,12 +82,6 @@ def command_args():
     print 'REGION     :', options.region
     print 'INSTANCES  :', options.instanceIds
     print 'PRIVATEIPS :', options.privIps
-    return;
-
-def usage():
-    print 'Interact with AWS CLI to list, stop, and start ec2 instances and get and release public IP addresses for specified private IP addresses.'
-    print '\nRequirements:\n\t1. python v 2.6 or later for subprocess and json\n\t2. AWS cli installed and configured on local host'
-    print '\nUsage: ./aws-ec2.py <action|> <instanceIds|privateIPs|>\n\tactions:\n\t\tstart|stop - start or stop ec2 instance(s)\n\t\tpub|nopub - get or release public IP(s) for private IP(s)\n\tinstance Ids: List ec2 instance Ids to stop or start. If more than one, coma separated with no spaces\n\tPrivate IPs: List private IPs to get or release public IPs for. If more than one, coma separated with no spaces'
     return;
 
 def get_instances():
@@ -135,23 +127,25 @@ def get_instances():
                     instances[instId]["instName"] = 'None'
                 
                 for netInt in range(len(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"])):
+                    # order by device index (ie. eth0, eth1) using
+                    intIndex = str(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["Attachment"]["DeviceIndex"])
                     intId = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["NetworkInterfaceId"]
-                    instances[instId]['interfaces'][intId] = {}
-                    instances[instId]['interfaces'][intId]['privIPs'] = {}
-                    instances[instId]['interfaces'][intId]['intId'] = intId
-                    instances[instId]['interfaces'][intId]['macAddr'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["MacAddress"]
-                    instances[instId]['interfaces'][intId]['desc'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["Description"]
-                    instances[instId]['interfaces'][intId]['index'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["Attachment"]["DeviceIndex"]
+                    instances[instId]['interfaces'][intIndex] = {}
+                    instances[instId]['interfaces'][intIndex]['privIPs'] = {}
+                    instances[instId]['interfaces'][intIndex]['intId'] = intId
+                    instances[instId]['interfaces'][intIndex]['macAddr'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["MacAddress"]
+                    instances[instId]['interfaces'][intIndex]['desc'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["Description"]
+                    instances[instId]['interfaces'][intIndex]['index'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["Attachment"]["DeviceIndex"]
                     for intPrivIP in range(len(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"])):
                         privIP = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["PrivateIpAddress"]
-                        instances[instId]['interfaces'][intId]['privIPs'][privIP] = {}
-                        instances[instId]['interfaces'][intId]['privIPs'][privIP]['privIP'] = privIP
-                        instances[instId]['interfaces'][intId]['privIPs'][privIP]['pubIp'] = 'None'
+                        instances[instId]['interfaces'][intIndex]['privIPs'][privIP] = {}
+                        instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['privIP'] = privIP
+                        instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['pubIp'] = 'None'
                         if 'Association' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]:
                             if 'PublicIp' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Association"]:
-                                instances[instId]['interfaces'][intId]['privIPs'][privIP]['pubIp'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Association"]["PublicIp"]
+                                instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['pubIp'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Association"]["PublicIp"]
                             
-                        instances[instId]['interfaces'][intId]['privIPs'][privIP]['primaryIP'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Primary"]
+                        instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['primaryIP'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Primary"]
 
 def get_regions():
     output = subprocess.Popen('aws ec2 describe-regions --region-names ' +options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
@@ -167,7 +161,12 @@ def get_regions():
 def show_instances():
     for regionIndex in range(len(ec2regions["Regions"])):
         region = ec2regions["Regions"][regionIndex]["RegionName"]
-        print '\n' + colors.blue + '############################\n# Region:',region,'\n############################' + colors.default,
+        ec2regions["Regions"][regionIndex]["runningInstances"] = "false"
+        if ec2reservations[regionIndex]["Reservations"]:
+            print colors.blue + '############################\n# Region:',region,'\n############################' + colors.default,
+        else:
+            continue
+
         for instance in range(len(ec2reservations[regionIndex]["Reservations"])):
             instId = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["InstanceId"]
 
@@ -178,15 +177,23 @@ def show_instances():
             else:
                 color = colors.yellow
 
+            if options.action == "running":
+                if instances[instId]["state"] != "running":
+                    continue
+                else:
+                    ec2regions["Regions"][regionIndex]["runningInstances"] = "true"
+
             print '\n  Name:', colors.blue + instances[instId]["instName"] + colors.default ,', Instance ID:',instId, \
-                  ', State:', color + instances[instId]["state"] + colors.default
+                ', State:', color + instances[instId]["state"] + colors.default
             print '    KeyName:',ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"],', Launch Time:', ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["LaunchTime"]
             print '    Primary Priv IP:',instances[instId]["instPrivIP"],', Primary Public IP:',instances[instId]["instPubIP"]
-            for intId in instances[instId]['interfaces'].keys():
-                print '\tInterface:',instances[instId]['interfaces'][intId]['desc'],', ID:',instances[instId]['interfaces'][intId]['intId'],', MAC:',instances[instId]['interfaces'][intId]['macAddr']
+            for intIndex in sorted(instances[instId]['interfaces'].keys()):
+                print '\tEth' + intIndex + ':',instances[instId]['interfaces'][intIndex]['desc'],', ID:',instances[instId]['interfaces'][intIndex]['intId'],', MAC:',instances[instId]['interfaces'][intIndex]['macAddr']
                 print '\t  IP Addresses:'
-                for privIP in instances[instId]['interfaces'][intId]['privIPs'].keys():
-                    print '\t  Primary:',instances[instId]['interfaces'][intId]['privIPs'][privIP]['primaryIP'],', Private IP:',privIP,', Public IP:',instances[instId]['interfaces'][intId]['privIPs'][privIP]['pubIp']
+                for privIP in instances[instId]['interfaces'][intIndex]['privIPs'].keys():
+                    print '\t  Primary:',instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['primaryIP'],', Private IP:',privIP,', Public IP:',instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['pubIp']
+        if (ec2regions["Regions"][regionIndex]["runningInstances"] == "false") and (options.action == "running"):
+            print "\n  No running instances in region", region
     
     return;
 
@@ -268,9 +275,6 @@ def del_pub_addr():
 # -------------------------------------------------------------------------------------------------------------------------
 
 command_args()
-# if (command_args.error or command_args.help):
-#     usage()
-#     quit()
 get_regions()
 get_instances()
 show_instances()

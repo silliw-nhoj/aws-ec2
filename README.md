@@ -9,6 +9,8 @@
 
   list - list all instances in all regions, all instances in a region by specifying region, or instance(s) in a region by specifying region and instance(s). See examples
   
+  running - same as list but only for running instances
+  
   start|stop - start or stop ec2 instance(s)
   
   pub|nopub - get or release public IP(s) for specified private IP(s)

@@ -34,3 +34,15 @@
     ./aws-ec2.py -a pub -r us-west-1 --priv-ips "10.0.1.226 10.0.101.21" --instance-ids "i-ca12d212 i-5c0ece84"
 
     ./aws-ec2.py -a nopub -r us-west-1 --priv-ips "10.0.1.226 10.0.101.21" --instance-ids "i-ca12d212 i-5c0ece84"
+
+#### Example EC2 instance output
+
+\############################
+\# Region: us-west-1
+\############################
+  Name: TS-122018-bigiq , Instance ID: i-0cf42a22424e3a1ad , State: stopped
+    KeyName: jw-keypair , Launch Time: 2019-10-26T17:40:28.000Z
+    Primary Priv IP: 10.0.1.139 , Primary Public IP: None
+        Eth0: Primary network interface , ID: eni-0793873a91ed2bb4a , MAC: 02:06:37:9d:92:e0
+          IP Addresses:
+          Primary: True , Private IP: 10.0.1.139 , Public IP: None

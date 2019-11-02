@@ -66,11 +66,11 @@ def command_args():
         dest="region",
         default="",
     )
-    parser.add_option('--instance-ids',
+    parser.add_option('-i', '--instance-ids',
         dest="instanceIds",
         default="",
     )
-    parser.add_option('--priv-ips',
+    parser.add_option('-p', '--priv-ips',
         dest="privIps",
         default="",
         type="string"
@@ -88,6 +88,7 @@ def get_instances():
 
     for regionIndex in  range(len(ec2regions["Regions"])):
         region = ec2regions["Regions"][regionIndex]["RegionName"]
+        ec2regions["Regions"][regionIndex]["runningInstances"] = "false"
         output = subprocess.Popen('aws ec2 describe-instances --instance-ids ' + options.instanceIds + ' --region ' + region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         (ec2JSON, err) = output.communicate()
         #global ec2reservations
@@ -102,7 +103,7 @@ def get_instances():
                 instances[instId] = {}
                 instances[instId]['interfaces'] = {}
                 instances[instId]['Region'] = region
-                
+
                 instances[instId]['state'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["State"]["Name"]
 
                 if 'PrivateIpAddress' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]:
@@ -118,24 +119,27 @@ def get_instances():
 
                 if 'Tags' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]:
                     for tag in range(len(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["Tags"])):
-                        if 'Name' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["Tags"][tag]["Key"]:
+                        if ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["Tags"][tag]["Key"] == 'Name':
                             instances[instId]["instName"] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["Tags"][tag]["Value"]
+                            break
                 else:
                     instances[instId]["instName"] = 'None'
 
                 if not instances[instId]["instName"]:
                     instances[instId]["instName"] = 'None'
-                
+
+                if ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["State"]["Name"] == "running":
+                    ec2regions["Regions"][regionIndex]["runningInstances"] = "true"
+
                 for netInt in range(len(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"])):
                     # order by device index (ie. eth0, eth1) using
                     intIndex = str(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["Attachment"]["DeviceIndex"])
-                    intId = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["NetworkInterfaceId"]
                     instances[instId]['interfaces'][intIndex] = {}
                     instances[instId]['interfaces'][intIndex]['privIPs'] = {}
-                    instances[instId]['interfaces'][intIndex]['intId'] = intId
+                    instances[instId]['interfaces'][intIndex]['intId'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["NetworkInterfaceId"]
                     instances[instId]['interfaces'][intIndex]['macAddr'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["MacAddress"]
                     instances[instId]['interfaces'][intIndex]['desc'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["Description"]
-                    instances[instId]['interfaces'][intIndex]['index'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["Attachment"]["DeviceIndex"]
+                    instances[instId]['interfaces'][intIndex]['index'] = intIndex
                     for intPrivIP in range(len(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"])):
                         privIP = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["PrivateIpAddress"]
                         instances[instId]['interfaces'][intIndex]['privIPs'][privIP] = {}
@@ -161,7 +165,11 @@ def get_regions():
 def show_instances():
     for regionIndex in range(len(ec2regions["Regions"])):
         region = ec2regions["Regions"][regionIndex]["RegionName"]
-        ec2regions["Regions"][regionIndex]["runningInstances"] = "false"
+
+        if options.action == "running":
+            if ec2regions["Regions"][regionIndex]["runningInstances"] == "false":
+                continue
+
         if ec2reservations[regionIndex]["Reservations"]:
             print colors.blue + '############################\n# Region:',region,'\n############################' + colors.default,
         else:
@@ -170,18 +178,15 @@ def show_instances():
         for instance in range(len(ec2reservations[regionIndex]["Reservations"])):
             instId = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["InstanceId"]
 
+            if ( options.action == "running" and instances[instId]["state"] != "running"):
+                continue
+
             if instances[instId]["state"] == "stopped":
                 color = colors.red
             elif instances[instId]["state"] == "running":
                 color = colors.green
             else:
                 color = colors.yellow
-
-            if options.action == "running":
-                if instances[instId]["state"] != "running":
-                    continue
-                else:
-                    ec2regions["Regions"][regionIndex]["runningInstances"] = "true"
 
             print '\n  Name:', colors.blue + instances[instId]["instName"] + colors.default ,', Instance ID:',instId, \
                 ', State:', color + instances[instId]["state"] + colors.default
@@ -192,8 +197,6 @@ def show_instances():
                 print '\t  IP Addresses:'
                 for privIP in instances[instId]['interfaces'][intIndex]['privIPs'].keys():
                     print '\t  Primary:',instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['primaryIP'],', Private IP:',privIP,', Public IP:',instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['pubIp']
-        if (ec2regions["Regions"][regionIndex]["runningInstances"] == "false") and (options.action == "running"):
-            print "\n  No running instances in region", region
     
     return;
 

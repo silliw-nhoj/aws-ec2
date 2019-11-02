@@ -37,9 +37,9 @@
 
 #### Example EC2 instance output
 ```
-\############################\
-\# Region: us-west-1\
-\############################\
+############################\
+# Region: us-west-1\
+############################\
   Name: TS-122018-bigiq , Instance ID: i-0cf42a22424e3a1ad , State: stopped\
   KeyName: jw-keypair , Launch Time: 2019-10-26T17:40:28.000Z\
   Primary Priv IP: 10.0.1.139 , Primary Public IP: None\

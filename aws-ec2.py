@@ -17,6 +17,7 @@ ec2reservations = {}
 ec2regions = {}
 instances = {}
 regions = {}
+volumes = {}
 
 usage = "\n\
 Objective: Interact with AWS CLI to list, stop, and start ec2 instances and get and release public IP addresses\n\
@@ -29,6 +30,7 @@ ACTIONS:\n\
   list - list all instances in all regions, all instances in a region by specifying region, or\n\
          instance(s) in a region by specifying region and instance(s). See examples\n\
   running - same as list but only for running instances\n\
+  bigvols - same as list but only for instances with big vols (> 100GB)\n\
   start|stop - start or stop ec2 instance(s)\n\
   pub|nopub - get or release public IP(s) for specified private IP(s)\n\n\
 EXAMPLES:\n\
@@ -60,7 +62,7 @@ def command_args():
     parser.add_option('-a', '--action', 
         dest="action", 
         default="list",
-        choices=['list','running','start','stop','pub','nopub']
+        choices=['list','running','start','stop','pub','nopub','bigvols']
     )
     parser.add_option('-r', '--region',
         dest="region",
@@ -105,6 +107,7 @@ def get_instances():
                 instances[instId]['Region'] = region
 
                 instances[instId]['state'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["State"]["Name"]
+                instances[instId]['stateReason'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["StateTransitionReason"]
 
                 if 'PrivateIpAddress' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]:
                     instances[instId]["instPrivIP"] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["PrivateIpAddress"]
@@ -151,6 +154,33 @@ def get_instances():
                             
                         instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['primaryIP'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Primary"]
 
+                # TODO: get ebs volume IDs. Make function to get volume details and disk sizes.
+
+                instances[instId]['volName'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["BlockDeviceMappings"][0]["DeviceName"]
+                instances[instId]['volId'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["BlockDeviceMappings"][0]["Ebs"]["VolumeId"]
+
+                for volRegIndex in  range(len(volumes)):
+                    for volIndex in range(len(volumes[volRegIndex]["Volumes"])):
+                        if instances[instId]['volId'] == volumes[volRegIndex]["Volumes"][volIndex]["VolumeId"]:
+                            instances[instId]['volType'] = volumes[volRegIndex]["Volumes"][volIndex]["VolumeType"]
+                            instances[instId]['volSize'] = volumes[volRegIndex]["Volumes"][volIndex]["Size"]
+
+
+
+def get_volumes():
+    for regionIndex in  range(len(ec2regions["Regions"])):
+        region = ec2regions["Regions"][regionIndex]["RegionName"]
+        output = subprocess.Popen('aws ec2 describe-volumes --region ' +region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        (ec2JSON, err) = output.communicate()
+        global volumes
+        if (err != ""):
+            print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+            sys.exit(0)
+        else:
+            volumes[regionIndex] = json.loads(ec2JSON)
+
+
+
 def get_regions():
     output = subprocess.Popen('aws ec2 describe-regions --region-names ' +options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     (ec2JSON, err) = output.communicate()
@@ -171,7 +201,7 @@ def show_instances():
                 continue
 
         if ec2reservations[regionIndex]["Reservations"]:
-            print colors.blue + '############################\n# Region:',region,'\n############################' + colors.default,
+            print colors.blue + '\n############################\n# Region:',region,'\n############################\n' + colors.default,
         else:
             continue
 
@@ -181,6 +211,9 @@ def show_instances():
             if ( options.action == "running" and instances[instId]["state"] != "running"):
                 continue
 
+            if instances[instId]['volSize'] <= 100:
+                continue
+
             if instances[instId]["state"] == "stopped":
                 color = colors.red
             elif instances[instId]["state"] == "running":
@@ -188,9 +221,10 @@ def show_instances():
             else:
                 color = colors.yellow
 
-            print '\n  Name:', colors.blue + instances[instId]["instName"] + colors.default ,', Instance ID:',instId, \
-                ', State:', color + instances[instId]["state"] + colors.default
+            print '  Name:', colors.blue + instances[instId]["instName"] + colors.default ,', Instance ID:',instId, \
+                ', State:', color + instances[instId]["state"] + colors.default + ' ' + instances[instId]["stateReason"] 
             print '    KeyName:',ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"],', Launch Time:', ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["LaunchTime"]
+            print '    VolumeName:',instances[instId]['volName'],', VolumeId:',instances[instId]['volId'] ,', Type:',instances[instId]['volType'],', Size:',str(instances[instId]['volSize'])
             print '    Primary Priv IP:',instances[instId]["instPrivIP"],', Primary Public IP:',instances[instId]["instPubIP"]
             for intIndex in sorted(instances[instId]['interfaces'].keys()):
                 print '\tEth' + intIndex + ':',instances[instId]['interfaces'][intIndex]['desc'],', ID:',instances[instId]['interfaces'][intIndex]['intId'],', MAC:',instances[instId]['interfaces'][intIndex]['macAddr']
@@ -279,6 +313,7 @@ def del_pub_addr():
 
 command_args()
 get_regions()
+get_volumes()
 get_instances()
 show_instances()
 if (options.action == 'stop' or options.action == 'start'):

@@ -90,7 +90,7 @@ def get_instances():
 
     for regionIndex in  range(len(ec2regions["Regions"])):
         region = ec2regions["Regions"][regionIndex]["RegionName"]
-        ec2regions["Regions"][regionIndex]["runningInstances"] = "false"
+        ec2regions["Regions"][regionIndex]["showRegion"] = "false"
         output = subprocess.Popen('aws ec2 describe-instances --instance-ids ' + options.instanceIds + ' --region ' + region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         (ec2JSON, err) = output.communicate()
         #global ec2reservations
@@ -105,9 +105,13 @@ def get_instances():
                 instances[instId] = {}
                 instances[instId]['interfaces'] = {}
                 instances[instId]['Region'] = region
+                instances[instId]["instName"] = 'None'
 
                 instances[instId]['state'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["State"]["Name"]
-                instances[instId]['stateReason'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["StateTransitionReason"]
+                if ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["StateTransitionReason"]:
+                    instances[instId]['stateReason'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["StateTransitionReason"]
+                else:
+                    instances[instId]['stateReason'] = "NA"
 
                 if 'PrivateIpAddress' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]:
                     instances[instId]["instPrivIP"] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["PrivateIpAddress"]
@@ -125,14 +129,12 @@ def get_instances():
                         if ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["Tags"][tag]["Key"] == 'Name':
                             instances[instId]["instName"] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["Tags"][tag]["Value"]
                             break
-                else:
-                    instances[instId]["instName"] = 'None'
 
                 if not instances[instId]["instName"]:
                     instances[instId]["instName"] = 'None'
 
-                if ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["State"]["Name"] == "running":
-                    ec2regions["Regions"][regionIndex]["runningInstances"] = "true"
+                if (options.action == "running" and ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["State"]["Name"] == "running"):
+                    ec2regions["Regions"][regionIndex]["showRegion"] = "true"
 
                 for netInt in range(len(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"])):
                     # order by device index (ie. eth0, eth1) using
@@ -142,6 +144,8 @@ def get_instances():
                     instances[instId]['interfaces'][intIndex]['intId'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["NetworkInterfaceId"]
                     instances[instId]['interfaces'][intIndex]['macAddr'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["MacAddress"]
                     instances[instId]['interfaces'][intIndex]['desc'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["Description"]
+                    if instances[instId]['interfaces'][intIndex]['desc'] == "":
+                        instances[instId]['interfaces'][intIndex]['desc'] = "No description"
                     instances[instId]['interfaces'][intIndex]['index'] = intIndex
                     for intPrivIP in range(len(ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"])):
                         privIP = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["PrivateIpAddress"]
@@ -152,9 +156,15 @@ def get_instances():
                             if 'PublicIp' in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Association"]:
                                 instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['pubIp'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Association"]["PublicIp"]
                             
-                        instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['primaryIP'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Primary"]
+                        if ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["NetworkInterfaces"][netInt]["PrivateIpAddresses"][intPrivIP]["Primary"] == True:
+                            instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['primaryIP'] = "Primary"
+                        else:
+                            instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['primaryIP'] = "Secondary"
 
                 # TODO: get ebs volume IDs. Make function to get volume details and disk sizes.
+
+                if not ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["BlockDeviceMappings"]:
+                    continue
 
                 instances[instId]['volName'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["BlockDeviceMappings"][0]["DeviceName"]
                 instances[instId]['volId'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["BlockDeviceMappings"][0]["Ebs"]["VolumeId"]
@@ -164,6 +174,9 @@ def get_instances():
                         if instances[instId]['volId'] == volumes[volRegIndex]["Volumes"][volIndex]["VolumeId"]:
                             instances[instId]['volType'] = volumes[volRegIndex]["Volumes"][volIndex]["VolumeType"]
                             instances[instId]['volSize'] = volumes[volRegIndex]["Volumes"][volIndex]["Size"]
+
+                if (instances[instId]['volSize'] > 100 and options.action == "bigvols"):
+                    ec2regions["Regions"][regionIndex]["showRegion"] = "true"
 
 
 
@@ -196,8 +209,8 @@ def show_instances():
     for regionIndex in range(len(ec2regions["Regions"])):
         region = ec2regions["Regions"][regionIndex]["RegionName"]
 
-        if options.action == "running":
-            if ec2regions["Regions"][regionIndex]["runningInstances"] == "false":
+        if (options.action == "running" or options.action == "bigvols"):
+            if ec2regions["Regions"][regionIndex]["showRegion"] == "false":
                 continue
 
         if ec2reservations[regionIndex]["Reservations"]:
@@ -208,10 +221,12 @@ def show_instances():
         for instance in range(len(ec2reservations[regionIndex]["Reservations"])):
             instId = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["InstanceId"]
 
+            #if not ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["BlockDeviceMappings"]:
+            #    continue
+
             if ( options.action == "running" and instances[instId]["state"] != "running"):
                 continue
-
-            if instances[instId]['volSize'] <= 100:
+            if ( options.action == "bigvols" and instances[instId]['volSize'] <= 100):
                 continue
 
             if instances[instId]["state"] == "stopped":
@@ -221,16 +236,16 @@ def show_instances():
             else:
                 color = colors.yellow
 
-            print '  Name:', colors.blue + instances[instId]["instName"] + colors.default ,', Instance ID:',instId, \
-                ', State:', color + instances[instId]["state"] + colors.default + ' ' + instances[instId]["stateReason"] 
+            print '  Name:', colors.blue + instances[instId]["instName"] + colors.default ,', Instance ID:',instId
+            print '    State:', color + instances[instId]["state"] + colors.default + ', Reason: ' + instances[instId]["stateReason"] 
             print '    KeyName:',ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"],', Launch Time:', ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["LaunchTime"]
-            print '    VolumeName:',instances[instId]['volName'],', VolumeId:',instances[instId]['volId'] ,', Type:',instances[instId]['volType'],', Size:',str(instances[instId]['volSize'])
+            if ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["BlockDeviceMappings"]:
+                print '    VolumeName:',instances[instId]['volName'],', VolumeId:',instances[instId]['volId'] ,', Type:',instances[instId]['volType'],', Size:',str(instances[instId]['volSize'])
             print '    Primary Priv IP:',instances[instId]["instPrivIP"],', Primary Public IP:',instances[instId]["instPubIP"]
             for intIndex in sorted(instances[instId]['interfaces'].keys()):
-                print '\tEth' + intIndex + ':',instances[instId]['interfaces'][intIndex]['desc'],', ID:',instances[instId]['interfaces'][intIndex]['intId'],', MAC:',instances[instId]['interfaces'][intIndex]['macAddr']
-                print '\t  IP Addresses:'
+                print '      Eth' + intIndex + ':',instances[instId]['interfaces'][intIndex]['desc'],', ID:',instances[instId]['interfaces'][intIndex]['intId'],', MAC:',instances[instId]['interfaces'][intIndex]['macAddr']
                 for privIP in instances[instId]['interfaces'][intIndex]['privIPs'].keys():
-                    print '\t  Primary:',instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['primaryIP'],', Private IP:',privIP,', Public IP:',instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['pubIp']
+                    print '        ' + instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['primaryIP'],'Private IP:',privIP,', Public IP:',instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['pubIp']
     
     return;
 

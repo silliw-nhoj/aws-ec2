@@ -284,7 +284,7 @@ def get_pub_addr():
                                 allocId = allocAddr['AllocationId']
                                 pubIp = allocAddr['PublicIp']
                                 netIntId = netInts['NetworkInterfaces'][netInt]['NetworkInterfaceId']
-                                print '* assigning public IP address', pubIp, 'to network interface', netIntId, 'private IP', priIP
+                                print '\n* assigning public IP address', pubIp, 'to network interface', netIntId, 'private IP', priIP
                                 output = subprocess.Popen('aws ec2 associate-address --allocation-id ' + allocId + ' --network-interface-id ' + netIntId + ' --private-ip-address ' + priIP + ' --region ' + options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                                 (assocAddrInfo, err) = output.communicate()
                                 if (err != ""):

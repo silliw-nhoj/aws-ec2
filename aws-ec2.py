@@ -106,6 +106,7 @@ def get_instances():
                 instances[instId]['interfaces'] = {}
                 instances[instId]['Region'] = region
                 instances[instId]["instName"] = 'None'
+                instances[instId]["instType"] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["InstanceType"]
 
                 instances[instId]['state'] = ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["State"]["Name"]
                 if ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["StateTransitionReason"]:
@@ -214,7 +215,7 @@ def show_instances():
                 continue
 
         if ec2reservations[regionIndex]["Reservations"]:
-            print colors.blue + '\n############################\n# Region:',region,'\n############################\n' + colors.default,
+            print colors.blue + '\n############################\n# Region:',region,'\n############################\n' + colors.default
         else:
             continue
 
@@ -236,8 +237,11 @@ def show_instances():
             else:
                 color = colors.yellow
 
+            if not ("KeyName" in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]):
+                ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"] = "none"
+
             print '  Name:', colors.blue + instances[instId]["instName"] + colors.default ,', Instance ID:',instId
-            print '    State:', color + instances[instId]["state"] + colors.default + ', Reason: ' + instances[instId]["stateReason"] 
+            print '    Instance Type:', instances[instId]["instType"],', State:', color + instances[instId]["state"] + colors.default + ', Reason: ' + instances[instId]["stateReason"] 
             print '    KeyName:',ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"],', Launch Time:', ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["LaunchTime"]
             if ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["BlockDeviceMappings"]:
                 print '    VolumeName:',instances[instId]['volName'],', VolumeId:',instances[instId]['volId'] ,', Type:',instances[instId]['volType'],', Size:',str(instances[instId]['volSize'])

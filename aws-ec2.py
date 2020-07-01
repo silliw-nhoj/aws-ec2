@@ -74,10 +74,15 @@ def command_args():
     )
     parser.add_option('-P', '--profile',
         dest="profile",
-        default="salesaws",
+        default="default",
     )
     parser.add_option('-p', '--priv-ips',
         dest="privIps",
+        default="",
+        type="string"
+    )
+    parser.add_option('-n', '--name-tag',
+        dest="nametag",
         default="",
         type="string"
     )
@@ -89,6 +94,7 @@ def command_args():
     print 'PROFILE    :', options.profile
     print 'INSTANCES  :', options.instanceIds
     print 'PRIVATEIPS :', options.privIps
+    print 'NAMETAG    :', options.nametag
     return;
 
 def get_instances():
@@ -233,6 +239,9 @@ def show_instances():
             if ( options.action == "running" and instances[instId]["state"] != "running"):
                 continue
             if ( options.action == "bigvols" and instances[instId]['volSize'] <= 100):
+                continue
+            
+            if ( options.nametag != "" and options.nametag.lower() not in instances[instId]['instName'].lower()):
                 continue
 
             if instances[instId]["state"] == "stopped":

@@ -86,6 +86,11 @@ def command_args():
         default="",
         type="string"
     )
+    parser.add_option('-k', '--key-pair',
+        dest="keypair",
+        default="",
+        type="string"
+    )
     global options
     options, remainder = parser.parse_args()
 
@@ -95,6 +100,7 @@ def command_args():
     print 'INSTANCES  :', options.instanceIds
     print 'PRIVATEIPS :', options.privIps
     print 'NAMETAG    :', options.nametag
+    print 'KEYPAIR    :', options.keypair
     return;
 
 def get_instances():
@@ -244,15 +250,18 @@ def show_instances():
             if ( options.nametag != "" and options.nametag.lower() not in instances[instId]['instName'].lower()):
                 continue
 
+            if not ("KeyName" in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]):
+                ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"] = "none"
+
+            if ( options.keypair != "" and options.keypair.lower() not in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"].lower()):
+                continue
+
             if instances[instId]["state"] == "stopped":
                 color = colors.red
             elif instances[instId]["state"] == "running":
                 color = colors.green
             else:
                 color = colors.yellow
-
-            if not ("KeyName" in ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]):
-                ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"] = "none"
 
             print '  Name:', colors.blue + instances[instId]["instName"] + colors.default ,', Instance ID:',instId
             print '    Instance Type:', instances[instId]["instType"],', State:', color + instances[instId]["state"] + colors.default + ', Reason: ' + instances[instId]["stateReason"] 

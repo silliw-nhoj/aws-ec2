@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python2
 # aws-ec2.py
 # j.willis@f5.com - 6-2-2016
 #

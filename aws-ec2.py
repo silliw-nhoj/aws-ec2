@@ -1,4 +1,4 @@
-#!/usr/bin/python2
+#!/usr/bin/python
 # aws-ec2.py
 # j.willis@f5.com - 6-2-2016
 #
@@ -94,13 +94,13 @@ def command_args():
     global options
     options, remainder = parser.parse_args()
 
-    print 'ACTION     :', options.action
-    print 'REGION     :', options.region
-    print 'PROFILE    :', options.profile
-    print 'INSTANCES  :', options.instanceIds
-    print 'PRIVATEIPS :', options.privIps
-    print 'NAMETAG    :', options.nametag
-    print 'KEYPAIR    :', options.keypair
+    print('ACTION     :', options.action)
+    print('REGION     :', options.region)
+    print('PROFILE    :', options.profile)
+    print('INSTANCES  :', options.instanceIds)
+    print('PRIVATEIPS :', options.privIps)
+    print('NAMETAG    :', options.nametag)
+    print('KEYPAIR    :', options.keypair)
     return;
 
 def get_instances():
@@ -111,8 +111,8 @@ def get_instances():
         output = subprocess.Popen('aws ec2 describe-instances --profile ' + options.profile + ' --instance-ids ' + options.instanceIds + ' --region ' + region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         (ec2JSON, err) = output.communicate()
         #global ec2reservations
-        if (err != ""):
-            print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+        if (err):
+            print('\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + str(err.decode("utf-8")))
             sys.exit(0)
         else:
             ec2reservations[regionIndex] = json.loads(ec2JSON)
@@ -204,8 +204,8 @@ def get_volumes():
         output = subprocess.Popen('aws ec2 describe-volumes --profile ' + options.profile + ' --region ' +region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         (ec2JSON, err) = output.communicate()
         global volumes
-        if (err != ""):
-            print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+        if (err):
+            print('\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + str(err.decode("utf-8")))
             sys.exit(0)
         else:
             volumes[regionIndex] = json.loads(ec2JSON)
@@ -216,8 +216,8 @@ def get_regions():
     output = subprocess.Popen('aws ec2 describe-regions --profile ' + options.profile + ' --region-names ' +options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     (ec2JSON, err) = output.communicate()
     global ec2regions
-    if (err != ""):
-        print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+    if (err):
+        print('\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + str(err.decode("utf-8")))
         sys.exit(0)
     else:
         ec2regions = json.loads(ec2JSON)
@@ -232,7 +232,7 @@ def show_instances():
                 continue
 
         if ec2reservations[regionIndex]["Reservations"]:
-            print colors.blue + '\n############################\n# Region:',region,'\n############################\n' + colors.default
+            print(colors.blue + '\n############################\n# Region:',region,'\n############################\n' + colors.default)
         else:
             continue
 
@@ -263,34 +263,34 @@ def show_instances():
             else:
                 color = colors.yellow
 
-            print '  Name:', colors.blue + instances[instId]["instName"] + colors.default ,', Instance ID:',instId
-            print '    Instance Type:', instances[instId]["instType"],', State:', color + instances[instId]["state"] + colors.default + ', Reason: ' + instances[instId]["stateReason"] 
-            print '    KeyName:',ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"],', Launch Time:', ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["LaunchTime"]
+            print('  Name:', colors.blue + instances[instId]["instName"] + colors.default ,', Instance ID:',instId)
+            print('    Instance Type:', instances[instId]["instType"],', State:', color + instances[instId]["state"] + colors.default + ', Reason: ' + instances[instId]["stateReason"])
+            print('    KeyName:',ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["KeyName"],', Launch Time:', ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["LaunchTime"])
             if ec2reservations[regionIndex]["Reservations"][instance]["Instances"][0]["BlockDeviceMappings"]:
-                print '    VolumeName:',instances[instId]['volName'],', VolumeId:',instances[instId]['volId'] ,', Type:',instances[instId]['volType'],', Size:',str(instances[instId]['volSize'])
-            print '    Primary Priv IP:',instances[instId]["instPrivIP"],', Primary Public IP:',instances[instId]["instPubIP"]
+                print('    VolumeName:',instances[instId]['volName'],', VolumeId:',instances[instId]['volId'] ,', Type:',instances[instId]['volType'],', Size:',str(instances[instId]['volSize']))
+            print('    Primary Priv IP:',instances[instId]["instPrivIP"],', Primary Public IP:',instances[instId]["instPubIP"])
             for intIndex in sorted(instances[instId]['interfaces'].keys()):
-                print '      Eth' + intIndex + ':',instances[instId]['interfaces'][intIndex]['desc'],', ID:',instances[instId]['interfaces'][intIndex]['intId'],', MAC:',instances[instId]['interfaces'][intIndex]['macAddr']
+                print('      Eth' + intIndex + ':',instances[instId]['interfaces'][intIndex]['desc'],', ID:',instances[instId]['interfaces'][intIndex]['intId'],', MAC:',instances[instId]['interfaces'][intIndex]['macAddr'])
                 for privIP in instances[instId]['interfaces'][intIndex]['privIPs'].keys():
-                    print '        ' + instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['primaryIP'],'Private IP:',privIP,', Public IP:',instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['pubIp']
+                    print('        ' + instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['primaryIP'],'Private IP:',privIP,', Public IP:',instances[instId]['interfaces'][intIndex]['privIPs'][privIP]['pubIp'])
     
     return;
 
 def stop_start_instance():
     output = subprocess.Popen('aws ec2 ' + options.action + '-instances --profile ' + options.profile + ' --instance-ids ' + options.instanceIds + ' --region ' + options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     (ec2JSON, err) = output.communicate()
-    if (err != ""):
-        print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+    if (err):
+        print('\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + str(err.decode("utf-8")))
         sys.exit(0)
     else:
         return;
 
 def get_pub_addr():
-    print
+    print()
     output = subprocess.Popen('aws ec2 describe-network-interfaces --profile ' + options.profile + ' --region ' + options.region , stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     (netIntInfo, err) = output.communicate()
-    if (err != ""):
-        print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+    if (err):
+        print('\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + str(err.decode("utf-8")))
         sys.exit(0)
     else:
         netInts = json.loads(netIntInfo) 
@@ -300,8 +300,8 @@ def get_pub_addr():
             priIP = privIps[i]
             output = subprocess.Popen('aws ec2 allocate-address --profile ' + options.profile + ' --region ' + options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             (allocatedAddrInfo, err) = output.communicate()
-            if (err != ""):
-                print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+            if (err):
+                print('\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + str(err.decode("utf-8")))
                 sys.exit(0)
             else:
                 allocAddr = json.loads(allocatedAddrInfo)
@@ -312,25 +312,25 @@ def get_pub_addr():
                                 allocId = allocAddr['AllocationId']
                                 pubIp = allocAddr['PublicIp']
                                 netIntId = netInts['NetworkInterfaces'][netInt]['NetworkInterfaceId']
-                                print '* assigning public IP address', pubIp, 'to network interface', netIntId, 'private IP', priIP
+                                print('* assigning public IP address', pubIp, 'to network interface', netIntId, 'private IP', priIP)
                                 output = subprocess.Popen('aws ec2 associate-address --profile ' + options.profile + ' --allocation-id ' + allocId + ' --network-interface-id ' + netIntId + ' --private-ip-address ' + priIP + ' --region ' + options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                                 (assocAddrInfo, err) = output.communicate()
-                                if (err != ""):
-                                    print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+                                if (err):
+                                    print('\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + str(err.decode("utf-8")))
                                     sys.exit(0)
 
         return;
     
 def del_pub_addr():
-    print
+    print()
     privIps = options.privIps
     privIps = privIps.split(' ')
     for i in range(len(privIps)):
         priIP = privIps[i]
         output = subprocess.Popen('aws ec2 describe-addresses --profile ' + options.profile + ' --filters \"Name=private-ip-address,Values=' + priIP + '\" --region ' + options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         (elaIPInfo, err) = output.communicate()
-        if (err != ""):
-            print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+        if (err):
+            print('\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + str(err.decode("utf-8")))
             sys.exit(0)
         else:
             elaIPs = json.loads(elaIPInfo)
@@ -338,16 +338,16 @@ def del_pub_addr():
                 pubIP = elaIPs['Addresses'][i]['PublicIp']
                 assocId = elaIPs['Addresses'][i]['AssociationId']
                 allocId = elaIPs['Addresses'][i]['AllocationId']
-                print '* Releasing elastic IP', pubIP, 'from private IP', priIP
+                print('* Releasing elastic IP', pubIP, 'from private IP', priIP)
                 output = subprocess.Popen('aws ec2 disassociate-address --profile ' + options.profile + ' --association-id ' + assocId + ' --region ' + options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                 (result, err) = output.communicate()
-                if (err != ""):
-                    print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+                if (err):
+                    print('\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + str(err.decode("utf-8")))
                     sys.exit(0)
                 output = subprocess.Popen('aws ec2 release-address --profile ' + options.profile + ' --allocation-id ' + allocId + ' --region ' + options.region, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                 (result, err) = output.communicate()
-                if (err != ""):
-                    print '\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + err
+                if (err):
+                    print('\nError: Function ' + sys._getframe().f_code.co_name + ' in ' + sys._getframe().f_code.co_filename + str(err.decode("utf-8")))
                     sys.exit(0)
     return;
     
